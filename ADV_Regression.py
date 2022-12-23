@@ -11,14 +11,14 @@ import argparse
 from sklearn.linear_model import LogisticRegressionCV
 
 parser = argparse.ArgumentParser(description='PyTorch code: Mahalanobis detector')
-parser.add_argument('--net_type', required=True, help='resnet | densenet')
+parser.add_argument('--net_type', default="resnet", help='resnet | densenet')
 args = parser.parse_args()
 print(args)
 
 def main():
     # initial setup
-    dataset_list = ['cifar10', 'cifar100', 'svhn']
-    adv_test_list = ['FGSM', 'BIM', 'DeepFool', 'CWL2']
+    dataset_list = ['cifar10']
+    adv_test_list = ['FGSM']
 
     print('evaluate the LID estimator')
     score_list = ['LID_10', 'LID_20', 'LID_30', 'LID_40', 'LID_50', 'LID_60', 'LID_70', 'LID_80', 'LID_90']
@@ -33,6 +33,8 @@ def main():
             for score in score_list:
                 print('load train data: ', out, ' of ', score)
                 total_X, total_Y = lib_regression.load_characteristics(score, dataset, out, outf)
+                print("Total X, ", len(total_X))
+                print("Total Y, ", len(total_Y))
                 X_val, Y_val, X_test, Y_test = lib_regression.block_split_adv(total_X, total_Y)
                 pivot = int(X_val.shape[0] / 6)
                 X_train = np.concatenate((X_val[:pivot], X_val[2*pivot:3*pivot], X_val[4*pivot:5*pivot]))
@@ -41,6 +43,7 @@ def main():
                 Y_val_for_test = np.concatenate((Y_val[pivot:2*pivot], Y_val[3*pivot:4*pivot], Y_val[5*pivot:]))
                 lr = LogisticRegressionCV(n_jobs=-1).fit(X_train, Y_train)
                 y_pred = lr.predict_proba(X_train)[:, 1]
+                accuracy = lr.score(X_train, Y_train)
                 #print('training mse: {:.4f}'.format(np.mean(y_pred - Y_train)))
                 y_pred = lr.predict_proba(X_val_for_test)[:, 1]
                 #print('test mse: {:.4f}'.format(np.mean(y_pred - Y_val_for_test)))
@@ -75,6 +78,12 @@ def main():
                 Y_val_for_test = np.concatenate((Y_val[pivot:2*pivot], Y_val[3*pivot:4*pivot], Y_val[5*pivot:]))
                 lr = LogisticRegressionCV(n_jobs=-1).fit(X_train, Y_train)
                 y_pred = lr.predict_proba(X_train)[:, 1]
+                # get accuracy:
+                lr.predict(X_train)
+                accuracy = lr.score(X_train, Y_train)
+                print(X_train.shape)
+                print(accuracy)
+
                 #print('training mse: {:.4f}'.format(np.mean(y_pred - Y_train)))
                 y_pred = lr.predict_proba(X_val_for_test)[:, 1]
                 #print('test mse: {:.4f}'.format(np.mean(y_pred - Y_val_for_test)))

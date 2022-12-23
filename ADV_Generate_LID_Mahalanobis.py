@@ -17,13 +17,13 @@ from torch.autograd import Variable
 
 parser = argparse.ArgumentParser(description='PyTorch code: Mahalanobis detector')
 parser.add_argument('--batch_size', type=int, default=200, metavar='N', help='batch size for data loader')
-parser.add_argument('--dataset', required=True, help='cifar10 | cifar100 | svhn')
+parser.add_argument('--dataset', default="cifar10", help='cifar10 | cifar100 | svhn')
 parser.add_argument('--dataroot', default='./data', help='path to dataset')
 parser.add_argument('--outf', default='./adv_output/', help='folder to output results')
 parser.add_argument('--num_classes', type=int, default=10, help='the # of classes')
-parser.add_argument('--net_type', required=True, help='resnet | densenet')
+parser.add_argument('--net_type', default="resnet", help='resnet | densenet')
 parser.add_argument('--gpu', type=int, default=0, help='gpu index')
-parser.add_argument('--adv_type', required=True, help='FGSM | BIM | DeepFool | CWL2')
+parser.add_argument('--adv_type', default="FGSM", help='FGSM | BIM | DeepFool | CWL2')
 args = parser.parse_args()
 print(args)
 
@@ -48,9 +48,9 @@ def main():
             model = torch.load(pre_trained_net, map_location = "cuda:" + str(args.gpu))
         in_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((125.3/255, 123.0/255, 113.9/255), (63.0/255, 62.1/255.0, 66.7/255.0)),])
     elif args.net_type == 'resnet':
-        model = models.ResNet34(num_c=args.num_classes)
-        model.load_state_dict(torch.load(pre_trained_net, map_location = "cuda:" + str(args.gpu)))
-        in_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),])
+        model = models.resnet32()
+        model.load_state_dict(torch.load("./cifar10_resnet32-cifar10_best.pth", map_location = "cuda:" + str(args.gpu)))
+        in_transform = transforms.Compose([transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),])
     model.cuda()
     print('load model: ' + args.net_type)
     
@@ -58,6 +58,10 @@ def main():
     print('load target data: ', args.dataset)
     train_loader, _ = data_loader.getTargetDataSet(args.dataset, args.batch_size, in_transform, args.dataroot)
     test_clean_data = torch.load(args.outf + 'clean_data_%s_%s_%s.pth' % (args.net_type, args.dataset, args.adv_type))
+    print("test_clean_data: ", test_clean_data)
+    print("test_clean_data.shape ", test_clean_data.shape)
+    
+    
     test_adv_data = torch.load(args.outf + 'adv_data_%s_%s_%s.pth' % (args.net_type, args.dataset, args.adv_type))
     test_noisy_data = torch.load(args.outf + 'noisy_data_%s_%s_%s.pth' % (args.net_type, args.dataset, args.adv_type))
     test_label = torch.load(args.outf + 'label_%s_%s_%s.pth' % (args.net_type, args.dataset, args.adv_type))
@@ -78,8 +82,9 @@ def main():
     sample_mean, precision = lib_generation.sample_estimator(model, args.num_classes, feature_list, train_loader)
     
     print('get LID scores')
-    LID, LID_adv, LID_noisy \
-    = lib_generation.get_LID(model, test_clean_data, test_adv_data, test_noisy_data, test_label, num_output)          
+    LID, LID_adv, LID_noisy = lib_generation.get_LID(model, test_clean_data, test_adv_data, test_noisy_data, test_label, num_output)          
+    print("LID: ", LID)
+    print("LID shape: ", np.shape(LID))
     overlap_list = [10, 20, 30, 40, 50, 60, 70, 80, 90]
     list_counter = 0
     for overlap in overlap_list:

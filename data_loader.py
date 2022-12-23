@@ -4,6 +4,7 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import os
+from custom_adversarial_dataset import AdversarialDataset
 
 def getSVHN(batch_size, TF, data_root='/tmp/public_dataset/pytorch', train=True, val=True, **kwargs):
     data_root = os.path.expanduser(os.path.join(data_root, 'svhn-data'))
@@ -42,18 +43,14 @@ def getCIFAR10(batch_size, TF, data_root='/tmp/public_dataset/pytorch', train=Tr
     kwargs.pop('input_size', None)
     ds = []
     if train:
-        train_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10(
-                root=data_root, train=True, download=True,
-                transform=TF),
-            batch_size=batch_size, shuffle=True, **kwargs)
+        train_data = AdversarialDataset("custom_data/ciless_pruned/ciless_pruned_train/mapping.csv", "custom_data/ciless_pruned/ciless_pruned_train", 
+            transform=TF)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=False, drop_last=False, **kwargs)
         ds.append(train_loader)
     if val:
-        test_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10(
-                root=data_root, train=False, download=True,
-                transform=TF),
-            batch_size=batch_size, shuffle=False, **kwargs)
+        test_data = AdversarialDataset("custom_data/ciless_pruned/ciless_pruned_test/mapping.csv", "custom_data/ciless_pruned/ciless_pruned_test", 
+            transform=TF)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False, **kwargs)
         ds.append(test_loader)
     ds = ds[0] if len(ds) == 1 else ds
     return ds

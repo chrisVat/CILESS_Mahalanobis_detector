@@ -3,9 +3,10 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch.autograd import Variable
 from scipy.spatial.distance import pdist, cdist, squareform
+from tqdm import tqdm
+
 
 # lid of a batch of query points X
 def mle_batch(data, batch, k):
@@ -31,6 +32,8 @@ def merge_and_generate_labels(X_pos, X_neg):
              y: generated labels (0/1): 2D ndarray same size as X
     """
     X_pos = np.asarray(X_pos, dtype=np.float32)
+    print("X pos: ", X_pos)
+    print("X_pos shape: ", X_pos.shape)
     X_pos = X_pos.reshape((X_pos.shape[0], -1))
 
     X_neg = np.asarray(X_neg, dtype=np.float32)
@@ -63,11 +66,14 @@ def sample_estimator(model, num_classes, feature_list, train_loader):
             temp_list.append(0)
         list_features.append(temp_list)
     
-    for data, target in train_loader:
+    print("Generating train predictions: ")
+    # use tqdm 
+    for data, target in tqdm(train_loader):
         total += data.size(0)
         data = data.cuda()
-        data = Variable(data, volatile=True)
-        output, out_features = model.feature_list(data)
+        with torch.no_grad():
+            data = Variable(data, volatile=True)
+            output, out_features = model.feature_list(data)
         
         # get hidden features
         for i in range(num_output):
@@ -97,20 +103,29 @@ def sample_estimator(model, num_classes, feature_list, train_loader):
             
     sample_class_mean = []
     out_count = 0
+    print("Creating temp list from feature list")
     for num_feature in feature_list:
         temp_list = torch.Tensor(num_classes, int(num_feature)).cuda()
         for j in range(num_classes):
+            if not isinstance(list_features, torch.Tensor):
+                list_features[out_count][j] = torch.tensor(list_features[out_count][j], dtype=torch.float32).cuda()
             temp_list[j] = torch.mean(list_features[out_count][j], 0)
         sample_class_mean.append(temp_list)
         out_count += 1
         
+
     precision = []
+    print("Catting features")
     for k in range(num_output):
         X = 0
         for i in range(num_classes):
             if i == 0:
                 X = list_features[k][i] - sample_class_mean[k][i]
             else:
+                if len(list_features[k][i].shape) == 0:
+                    list_features[k][i] = list_features[k][i].reshape(1, 1)
+                if len(sample_class_mean[k][i].shape) == 0:
+                    sample_class_mean[k][i] = sample_class_mean[k][i].reshape(1, 1)
                 X = torch.cat((X, list_features[k][i] - sample_class_mean[k][i]), 0)
                 
         # find inverse            
@@ -308,10 +323,11 @@ def get_Mahalanobis_score_adv(model, test_data, test_label, num_classes, outf, n
             gradient.index_copy_(1, torch.LongTensor([2]).cuda(), gradient.index_select(1, torch.LongTensor([2]).cuda()) / (0.2010))
         tempInputs = torch.add(data.data, -magnitude, gradient)
  
-        noise_out_features = model.intermediate_forward(Variable(tempInputs, volatile=True), layer_index)
-        noise_out_features = noise_out_features.view(noise_out_features.size(0), noise_out_features.size(1), -1)
-        noise_out_features = torch.mean(noise_out_features, 2)
-        noise_gaussian_score = 0
+        with torch.no_grad():
+            noise_out_features = model.intermediate_forward(Variable(tempInputs, volatile=True), layer_index)
+            noise_out_features = noise_out_features.view(noise_out_features.size(0), noise_out_features.size(1), -1)
+            noise_out_features = torch.mean(noise_out_features, 2)
+            noise_gaussian_score = 0
         for i in range(num_classes):
             batch_sample_mean = sample_mean[layer_index][i]
             zero_f = noise_out_features.data - batch_sample_mean
@@ -342,7 +358,10 @@ def get_LID(model, test_clean_data, test_adv_data, test_noisy_data, test_label, 
         LID.append([])
         LID_adv.append([])
         LID_noisy.append([])
-        
+    print("test 1")
+
+    print("test_clean-data.size(0): ", test_clean_data.shape)
+    print("int: ", int(np.floor(test_clean_data.size(0)/batch_size)))
     for data_index in range(int(np.floor(test_clean_data.size(0)/batch_size))):
         data = test_clean_data[total : total + batch_size].cuda()
         adv_data = test_adv_data[total : total + batch_size].cuda()
@@ -357,21 +376,21 @@ def get_LID(model, test_clean_data, test_adv_data, test_noisy_data, test_label, 
         for i in range(num_output):
             out_features[i] = out_features[i].view(out_features[i].size(0), out_features[i].size(1), -1)
             out_features[i] = torch.mean(out_features[i].data, 2)
-            X_act.append(np.asarray(out_features[i], dtype=np.float32).reshape((out_features[i].size(0), -1)))
+            X_act.append(np.asarray(out_features[i].cpu(), dtype=np.float32).reshape((out_features[i].size(0), -1)))
         
         output, out_features = model.feature_list(Variable(adv_data, volatile=True))
         X_act_adv = []
         for i in range(num_output):
             out_features[i] = out_features[i].view(out_features[i].size(0), out_features[i].size(1), -1)
             out_features[i] = torch.mean(out_features[i].data, 2)
-            X_act_adv.append(np.asarray(out_features[i], dtype=np.float32).reshape((out_features[i].size(0), -1)))
+            X_act_adv.append(np.asarray(out_features[i].cpu(), dtype=np.float32).reshape((out_features[i].size(0), -1)))
 
         output, out_features = model.feature_list(Variable(noisy_data, volatile=True))
         X_act_noisy = []
         for i in range(num_output):
             out_features[i] = out_features[i].view(out_features[i].size(0), out_features[i].size(1), -1)
             out_features[i] = torch.mean(out_features[i].data, 2)
-            X_act_noisy.append(np.asarray(out_features[i], dtype=np.float32).reshape((out_features[i].size(0), -1)))
+            X_act_noisy.append(np.asarray(out_features[i].cpu(), dtype=np.float32).reshape((out_features[i].size(0), -1)))
         
         # LID
         list_counter = 0 

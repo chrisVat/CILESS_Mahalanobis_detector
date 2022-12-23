@@ -2,6 +2,7 @@
 lib/__pycache__
 data/*
 output/*
+custom_data/*
 pre_trained/*
 adv_output/*
 libs/__pycache__
